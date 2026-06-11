@@ -46,6 +46,7 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
     Core/Src/UsbDataEncoding.s
+    Core/Src/Usb_signal_transfer_timing.s
 )
 
 # Add include paths
