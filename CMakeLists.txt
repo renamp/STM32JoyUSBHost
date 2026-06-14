@@ -47,6 +47,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
     Core/Src/UsbDataEncoding.s
     Core/Src/Usb_signal_transfer_timing.s
+    Core/Src/Usb_signal_receive.s
+    Core/Src/usb_util.s
 )
 
 # Add include paths
