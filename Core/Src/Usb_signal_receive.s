@@ -1,0 +1,289 @@
+/**
+  ******************************************************************************
+  * @file      Usb_signal_receive.s  [11/6/2026]
+  * @author    Renan A. Pacheco
+  * @brief   Handle USB differential signal receive timing
+  *     This module:
+  *         - Module designed for systemCoreFrequency = 24MHz
+  *         - receive USB differential signal
+  *         - Uses PA0 for (D-) and PA1 for (D+)
+  *
+  ******************************************************************************
+  * @attention
+  *     This module is strongly dependent of Core running at 24MHz frequency.
+  ******************************************************************************
+  */
+
+.syntax unified
+.cpu cortex-m0plus
+.fpu softvfp
+.thumb
+
+.global USB_ReceiveBytes
+.type USB_ReceiveBytes, %function
+
+.global USB_ReceiveBytes_NoAck
+.type USB_ReceiveBytes_NoAck, %function
+
+.equ USB_GPIO_BASE,             0x50000000
+.equ USB_GPIO_D_MINUS_PIN,      0
+.equ USB_GPIO_D_PLUS_PIN,       1
+
+.equ USB_GPIO_MODER,      USB_GPIO_BASE + 0x00
+.equ USB_GPIO_PUPDR,      USB_GPIO_BASE + 0x0C
+.equ USB_GPIO_IDR,        USB_GPIO_BASE + 0x10
+.equ USB_GPIO_BSRR,       USB_GPIO_BASE + 0x18
+.equ USB_DMP,             USB_GPIO_D_MINUS_PIN
+.equ USB_DPP,             USB_GPIO_D_PLUS_PIN
+.equ USB_DM_MSM,          (0b11 << (2 * USB_DMP))
+.equ USB_DP_MSM,          (0b11 << (2 * USB_DPP))
+.equ USB_DM_OM,           (0b01 << (2 * USB_DMP))
+.equ USB_DP_OM,           (0b01 << (2 * USB_DPP))
+.equ USB_DM_SOH,          (1 << USB_DMP)             // (D-) Set Output HIGH
+.equ USB_DM_SOL,          (1 << (USB_DMP + 16))      // (D-) Set Output LOW
+.equ USB_DP_SOH,          (1 << USB_DPP)             // (D+) Set Output HIGH
+.equ USB_DP_SOL,          (1 << (USB_DPP + 16))      // (D+) Set Output LOW
+.equ USB_GPIO_MODE_SPEED_MASK,  ~(USB_DM_MSM | USB_DP_MSM)
+.equ USB_GPIO_OUTPUT,     (USB_DM_OM | USB_DP_OM)    // use Output mode
+.equ USB_DM_IM,           (0b00 << (2 * USB_DMP))
+.equ USB_DP_IM,           (0b00 << (2 * USB_DPP))
+.equ USB_GPIO_INPUT,      (USB_DM_IM | USB_DP_IM)
+.equ USB_DIMSK,           (1 << USB_DMP | 1<< USB_DPP)
+.equ USB_GPIO_HIGHSPEED,  (USB_DM_MSM | USB_DP_MSM)  // use High Speed
+.equ USB_DIFF_1,          (USB_DM_SOL | USB_DP_SOH)  // (D+)=1, (D-)=0
+.equ USB_DIFF_0,          (USB_DM_SOH | USB_DP_SOL)  // (D+)=0, (D-)=1
+.equ USB_DATA_K,          (1 << USB_DPP)         // Data-K state when DIFF_1
+.equ USB_DATA_J,          (1 << USB_DMP)         // Data-J state when DIFF_0
+.equ USB_SE0,             (USB_DM_SOL | USB_DP_SOL)  // (D+)=0, (D-)=0
+.equ USB_EOP,             0
+.equ USB_TIMEOUT,         (0x100000)
+.equ OFFSET_FROM_STACK,    40
+
+fDelay:             @(1+([r0]*3))
+    subs   r0, #1           @1,   0/--| dec delay counter
+    bne   fDelay            @1/2, 1/3| loop until delay is over
+    bx     lr               @2,   2/--| return from delay function
+
+fDelay_5clk:  @2
+    bx lr
+
+Usb_set_input_mode:
+    ldr    r7, =USB_GPIO_MODER
+    ldr    r4, [r7]                     @ load current value of MODER
+    ldr    r3, =USB_GPIO_MODE_SPEED_MASK   @ mask bits
+    ands   r3, r4                       @ clear bits
+    ldr    r4, =USB_GPIO_INPUT
+    orrs   r3, r4                       @ set bits for input
+    str    r3, [r7]                     @ update value of MODER
+    bx lr
+
+
+//;---------------------------------
+//; Function to Receive bytes from device
+//; prototype:
+//;	extern uint8_t USB_ReceiveBytes_NoAck(uint8_t *ptr_data);
+//; (ptr_array[24:25])
+USB_ReceiveBytes_NoAck:
+    ldr    r3, =0;	    @ No_Ack
+    b	 Receive_Bytes_INI1
+//;---------------------------------
+//; Function to Receive bytes from device
+//; prototype:
+//;	extern uint8_t USB_ReceiveBytes(uint8_t *ptr_data);
+//; (ptr_array[24:25])
+USB_ReceiveBytes:
+    ldr    r3, =1      @ return ACK after data received
+Receive_Bytes_INI1:
+    push   {r4-r7, lr}
+    mov    r4, r8
+    mov    r5, r9
+    mov    r6, r10
+    mov    r7, r11
+    push   {r4-r7}
+    CPSID  i			        @ disable interrupt
+    push   {r0}			        @ pointer outArray
+    mov    r1, sp                   @ [r1] stack index for diff array
+    subs   r1, #OFFSET_FROM_STACK   @ leave some space on stack
+    push   {r3}			    @ store param: (0) No_ACK / (1) ACK
+    bl   Usb_set_input_mode
+    ldr    r2, =USB_DIMSK
+    ldr    r3, =USB_DATA_K
+    ldr    r4, =USB_DATA_J
+    ldr    r5, =USB_TIMEOUT
+    ldr    r6, =USB_GPIO_IDR
+    movs   r7, #4            @  ; each byte can store 4 diff pairs
+    mov    r11, r7           @  ; [r11] const=4 for easy loading later
+// wait for first sync bit
+Rcv_Bytes_LS0:
+    ldrh   r7, [r6]          @2,   [0:1]    ;Read input (D- and D+)
+    tst    r7, r3            @1,   [2]      ;check if input changed
+    bne  RCV_sync_bits       @1/2, [3:3/4]
+    subs   r5, #1            @1,   [4]      ;dec timeout
+    beq  Rcv_Bytes_SyncErro  @1/2, [5]
+    ldrh   r7, [r6]          @2,   [0:1]    ;Read input (D- and D+)
+    tst    r7, r3            @1,   [2]      ;check if input changed
+    beq    Rcv_Bytes_LS0     @1,   [3]     
+RCV_sync_bits:
+    ldr    r7, =1            @2,   [5:6]      ;([4] instead of [5] to adjust skew)
+    mov    r12, r7           @1,   [7]      ;[r12] always 1 to inc counters
+    movs   r5, #6            @1,   [8]      ;counter for remaining sync bits
+    ldr    r0, =0            @2,   [9:10]   [ dummy to fill timing]
+    nop                      @1,   [11]     [ dummy to fill timing]
+RCV_sync_bits_loop:
+    bl   fDelay_5clk         @3+2, [12:16]  [ dummy to fill timing]
+    ldrh   r7, [r6]          @2,   [0:1]    ;Read input (D- and D+)
+    ands   r7, r2            @1,   [2]      ; Apply input mask
+    cmp    r7, r4            @1,   [3]      ;check if input changed
+    bne  Rcv_Bytes_SyncErro  @1/2, [4:4/5]
+    mov    r7, r4            @1,   [5]      ;swap [r3] and [r4]
+    mov    r4, r3            @1,   [6]      ;for next next sync bit check
+    mov    r3, r7            @1,   [7]
+    subs   r5, #1            @1,   [8]      ;dec remaining sync bits counter
+    nop                      @1,   [9]     [ dummy to fill timing]
+    bne  RCV_sync_bits_loop  @1/2, [10:10/11]
+    ldr    r4, =0xC0         @2,   [11:12]   ; mask for incomming diff bits
+    ldr    r7, =0x80         @2,   [13:14]
+    mov    r9, r7            @1,   [15]     ; [r9] const = 0x80
+// Last sync bit
+    ldrh   r7, [r6]          @2,   [0:1]    ;Read input (D- and D+)
+    tst    r7, r3            @1,   [2]      ;check if input changed
+    beq  Rcv_Bytes_SyncErro  @1/2, [3]
+    mov    r2, r3            @1,   [4]      ;[r2] state after sync (Data K)
+    ldr    r7, =0x80         @2,   [5:6]    ; Initial value of last enc.diff
+    mov    r5, r7            @1,   [7]      ; last encoded differential pair
+    movs   r7, #0            @1,   [8]
+    mov    r8, r7            @1,   [9]      ;[r8] clear diff bits counter
+    mov    r0, r7            @1,   [10]     ;[r0] Initial state of diff storage
+    ldr    r3, =USB_DIMSK    @2,   [11:12]  ;[r3] Input pins mask
+    ldr    r7, =0xFFFF       @2,   [13:14]
+    mov    r10, r7           @1,   [15]     ; [r10] const = 0xff
+
+RCV_data_bits_loop:
+    ldrh   r7, [r6]          @2,   [0:1]    ;Read input (D- and D+)
+    ands   r7, r3            @1,   [2]      ;Apply input pins mask
+    beq  Rcv_Bytes_EOP       @1/2, [3:3/4]  ;Branch if (D- and D+ == 0)
+    add    r8, r12           @1,   [4]      ; inc diff bits counter
+    tst    r7, r2            @1,   [5]      ;Check if Data state changed
+    bne  Rcv_no_change_1aux  @1/2, [6:6/7]
+    mov    r2, r7            @1,   [7]      ; Update last input
+    mov    r7, r10           @1,   [8]      ; Load 0xffff
+    eors   r5, r7            @1,   [9]      ; Invert last enc.diff
+Rcv_no_change_1:
+    ands   r5, r4            @1,   [10]     ; Mask new enc.diff
+    lsrs   r0, #2            @1,   [11]     ; Shift to position
+    orrs   r0, r5            @1,   [12]     ; Update enc.diff storage
+    nop                      @1,   [13]     [ dummy to fill timing]
+    b    Rcv_diff_bit_2      @2,   [14:15]  ;
+Rcv_no_change_1aux:
+    b    Rcv_no_change_1     @2,   [8:9]    ; trick to fill timing
+
+Rcv_diff_bit_2:
+    ldrh   r7, [r6]          @2,   [0:1]    ;Read input (D- and D+)
+    ands   r7, r3            @1,   [2]      ;Apply input pins mask
+    beq  Rcv_Bytes_EOP       @1/2, [3:3/4]  ;Branch if (D- and D+ == 0)
+    add    r8, r12           @1,   [4]      ; inc diff bits counter
+    tst    r7, r2            @1,   [5]      ;Check if Data state changed
+    bne  Rcv_no_change_2aux  @1/2, [6:6/7]
+    mov    r2, r7            @1,   [7]      ; Update last input
+    mov    r7, r10           @1,   [8]      ; Load 0xff
+    eors   r5, r7            @1,   [9]      ; Invert last enc.diff
+Rcv_no_change_2:
+    ands   r5, r4            @1,   [10]     ; Mask new enc.diff
+    lsrs   r0, #2            @1,   [11]     ; Shift to position
+    orrs   r0, r5            @1,   [12]     ; Update enc.diff storage
+    b    Rcv_diff_bit_3      @2,   [13:14]  ;
+Rcv_no_change_2aux:
+    b    Rcv_no_change_2     @2,   [8:9]    ; trick to fill timing
+
+Rcv_diff_bit_3:
+    ldrh   r7, [r6]          @2,   [0:1]    ;Read input (D- and D+)
+    ands   r7, r3            @1,   [2]      ;Apply input pins mask
+    beq  Rcv_Bytes_EOP       @1/2, [3:3/4]  ;Branch if (D- and D+ == 0)
+    add    r8, r12           @1,   [4]      ; inc diff bits counter
+    tst    r7, r2            @1,   [5]      ;Check if Data state changed
+    bne  Rcv_no_change_3aux  @1/2, [6:6/7]
+    mov    r2, r7            @1,   [7]      ; Update last input
+    mov    r7, r10           @1,   [8]      ; Load 0xff
+    eors   r5, r7            @1,   [9]      ; Invert last enc.diff
+Rcv_no_change_3:
+    ands   r5, r4            @1,   [10]     ; Mask new enc.diff
+    lsrs   r0, #2            @1,   [11]     ; Shift to position
+    orrs   r0, r5            @1,   [12]     ; Update enc.diff storage
+    b    Rcv_diff_bit_4      @2,   [13:14]  ;
+Rcv_no_change_3aux:
+    b    Rcv_no_change_3     @2,   [8:9]    ; trick to fill timing
+
+Rcv_diff_bit_4:
+    ldrh   r7, [r6]          @2,   [0:1]    ;Read input (D- and D+)
+    ands   r7, r3            @1,   [2]      ;Apply input pins mask
+    beq  Rcv_Bytes_EOP       @1/2, [3:3/4]  ;Branch if (D- and D+ == 0)
+    add    r8, r12           @1,   [4]      ; inc diff bits counter
+    tst    r7, r2            @1,   [5]      ;Check if Data state changed
+    bne  Rcv_no_change_4aux  @1/2, [6:6/7]
+    mov    r2, r7            @1,   [7]      ; Update last input
+    mov    r7, r10           @1,   [8]      ; Load 0xff
+    eors   r5, r7            @1,   [9]      ; Invert last enc.diff
+Rcv_no_change_4:
+    ands   r5, r4            @1,   [10]     ; Mask new enc.diff
+    lsrs   r0, #2            @1,   [11]     ; Shift to position
+    orrs   r0, r5            @1,   [12]     ; Update enc.diff storage
+    strb   r0, [r1]          @2,   [13:14]
+    subs   r1, #1            @1,   [15]     ; dec pointer
+    b    RCV_data_bits_loop  @2,   [16:17]  ;
+Rcv_no_change_4aux:
+    b    Rcv_no_change_4     @2,   [8:9]    ; trick to fill timing
+
+Rcv_Bytes_SyncErro: @ sync failed
+    ldr   r2, =0
+Rcv_Bytes_EOP_ERRO:
+    pop   {r0, r1}
+    ldr   r0, =0
+    b    Rcv_Bytes_END
+
+Rcv_Bytes_EOP:				 @	   [4]		// 00 lines
+    strb   r0, [r1]          @2,   [5:6]
+    subs   r1, #1            @1,   [7]     ; dec pointer
+    bl   fDelay_5clk         @3+2, [8:12]   [ dummy to fill timing]
+    bl   fDelay_5clk         @3+2, [13:17]  [ dummy to fill timing]
+
+    ldrh   r7, [r6]          @2,   [0:1]    ;Read input (D- and D+)
+    ands   r7, r3            @1,   [2]      ;Apply input pins mask
+    bne  Rcv_Bytes_EOP_ERRO  @1/2, [3:3/4]  ;Branch if (D- and D+ == 0)
+    bl   fDelay_5clk         @3+2, [4:8]
+    bl   fDelay_5clk         @3+2, [9:13]
+    nop                      @1,   [14]     [ dummy to fill timing]
+
+    ldrh   r7, [r6]          @2,   [0:1]    ;Read input (D- and D+)
+    ldr    r4, =USB_DATA_J   @2,   [2:3]    ; State after EOP
+    ands   r7, r3            @1,   [4]      ; Apply input mask
+    cmp    r7, r4            @1,   [5]      ;check state
+    bne  Rcv_Bytes_EOP_ERRO  @1/2, [6:6/7]
+
+    pop	   {r4}			    @ param: (0) dont call ACK / (1) call ACK
+    cmp    r4, #1
+    bne  Rcv_Bytes_NoAck    @ branch if param No ACK
+Rcv_Bytes_DoAck:
+    ldr    r7, =0xA965A666  @ load respective raw diff bits for ACK
+    rev    r7, r7
+    push   {r7}             @ store in stack
+    ldr    r0, =16          @ length diff bits
+    mov    r1, sp
+    adds   r1, #3           @ Pointer to data
+    bl	 Send_RawDiff
+    pop    {r7}                     @ back stact pointer
+Rcv_Bytes_NoAck:
+    mov    r0, r8                   @ length diff bits
+    mov    r1, sp
+    subs   r1, #OFFSET_FROM_STACK   @ pointer to diff bits (reverse stored)
+    pop	   {r2}			    @ pointer outArray Data decoded
+    bl	 Rawdiff2Bytes
+    b    Rcv_Bytes_END
+
+Rcv_Bytes_END:
+    CPSIE   i               @ enable interups
+    pop   {r4-r7}
+    mov   r8, r4
+    mov   r9, r5
+    mov   r10, r6
+    mov   r11, r7
+    pop   {r4-r7, pc}
