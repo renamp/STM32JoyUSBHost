@@ -18,7 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-
+#include "stm32g0xx_hal_gpio.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
@@ -49,6 +49,13 @@
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 /* USER CODE BEGIN PFP */
+extern void Bytes2Rawdiff(uint8_t len, uint8_t *data);
+extern uint8_t test_decoding(uint8_t len, uint8_t *data, uint8_t *out);
+extern void USB_SendBytes(uint8_t size, uint8_t *data);
+extern void USB_PortPins_Init(void);
+extern void USB_Output_mode();
+extern uint8_t USB_ReceiveBytes(uint8_t *ptr_outBytes);
+extern uint8_t USB_ReceiveBytes_NoAck(uint8_t *ptr_outBytes);
 
 /* USER CODE END PFP */
 
@@ -92,8 +99,24 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  int length = 0;
   while (1)
   {
+    uint8_t out[12];
+    uint8_t setup[] = {0x2D,0x00,0x10};
+    uint8_t pidin[] = {0x69,0x00,0x10};
+    uint8_t data[] = {0xC3,0x80,0x06,0x00,0x01,0x00,0x00,0x40,0x00,0xDD,0x94};
+    USB_SendBytes(3, setup);
+    USB_SendBytes(11, data);
+    length = USB_ReceiveBytes_NoAck(out);
+    if( length == 0 )  HAL_Delay(1);
+    USB_SendBytes(3, pidin);
+    length = USB_ReceiveBytes(out);
+    if( length == 0 )  HAL_Delay(1);
+    // test_decoding(11, data, out);
+     asm("nop");
+     HAL_Delay(1000);
+     HAL_Delay(length);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -154,14 +177,24 @@ void SystemClock_Config(void)
 static void MX_GPIO_Init(void)
 {
   /* USER CODE BEGIN MX_GPIO_Init_1 */
-
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
   /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOA_CLK_ENABLE();
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
+  USB_Output_mode();
 
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : PA2 */
+  GPIO_InitStruct.Pin = GPIO_PIN_2;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
   /* USER CODE END MX_GPIO_Init_2 */
 }
 

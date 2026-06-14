@@ -125,28 +125,28 @@ Sd_RD_fDelay:  @ (1+([r0]*3))
 Send_RawDiff_L1:
     ldrb    r2, [r1]        @2,     8/-- | load byte from data in
     subs    r1, #1          @1,    10/-- | dec data pointer
-    bl    Sd_RD_fSIGNAL      @2[3:4], -/--| send bit to USB lines
+    bl    Sd_RD_fSIGNAL     @3[3:4], -/--| send bit to USB lines
     lsrs    r2, #1          @1,      4/--| shift byte to get next bit in carry
     subs    r0, #1          @1,      5/--| dec bit length
     beq   Send_RawDiff_End  @1/2,    6/7| branch if more bits to send
     ldrb    r3, [r1]        @2,      7/--| dummy
     ldrb    r3, [r1]        @2,      9/--| dummy
 
-    bl    Sd_RD_fSIGNAL     @2[3:4], -/--| send bit to USB lines
+    bl    Sd_RD_fSIGNAL     @3[3:4], -/--| send bit to USB lines
     lsrs    r2, #1          @1,      4/--| shift byte to get next bit in carry
     subs    r0, #1          @1,      5/--| dec bit length
     beq   Send_RawDiff_End  @1/2,    6/7| branch if more bits to send -- [8/9]
     ldrb    r3, [r1]        @2,      7/--| dummy
     ldrb    r3, [r1]        @2,      9/--| dummy
 
-    bl    Sd_RD_fSIGNAL     @2[3:4], -/--| send bit to USB lines
+    bl    Sd_RD_fSIGNAL     @3[3:4], -/--| send bit to USB lines
     lsrs    r2, #1          @1,      4/--| shift byte to get next bit in carry
     subs    r0, #1          @1,      5/--| dec bit length
     beq   Send_RawDiff_End  @1/2,    6/7| branch if more bits to send -- [8/9]
     ldrb    r3, [r1]        @2,      7/--| dummy
     ldrb    r3, [r1]        @2,      9/--| dummy
 
-    bl    Sd_RD_fSIGNAL     @2[3:4], -/--| send bit to USB lines
+    bl    Sd_RD_fSIGNAL     @3[3:4], -/--| send bit to USB lines
     lsrs    r2, #1          @1,      4/--| shift byte to get next bit in carry
     subs    r0, #1          @1,      5/--| dec bit length
     bne   Send_RawDiff_L1   @1/2     6/7
