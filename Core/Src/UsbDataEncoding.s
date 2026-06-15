@@ -114,7 +114,7 @@ Bytes2Rawdiff_L4:
 
 .equ NUMBER_DIFF_BITS_IN_BYTE,    (0x04)
 .equ BITSTUFF_CNT_RST,            (0x06)
-.equ INITIAL_DIFF,                (0xAA)
+.equ INITIAL_DIFF,                (0x02)
 .equ DIFF_MASK,                   (0x03)
 .equ SET_BIT,                     (0x80)
 
