@@ -74,20 +74,33 @@ Rcv_wait_first_bit:
     ldrh   r7, [r6]          @2,   [0:1]    ; Read input (D- and D+)
     ands   r7, r2            @1,   [2]
     cmp    r7, r3            @1,   [3]      ; Check if input changed
-    beq  RCV_sync_bits       @1/2, [4:4/5]
+    beq  RCV_wait_sec_bit    @1/2, [4:4/5]
     subs   r5, #1            @1,   [5]      ; dec timeout
     beq  Rcv_Bytes_SyncErro  @1/2, [6]
     ldrh   r7, [r6]          @2,   [0:1]    ; Read input (D- and D+)
     ands   r7, r2            @1,   [2]
     cmp    r7, r3            @1,   [3]      ; check if input changed
     bne  Rcv_wait_first_bit  @1/2, [4:4/5]
-RCV_sync_bits:
+RCV_wait_sec_bit:
     ldr    r7, =1            @2,   [5:6]    ;
     mov    r12, r7           @1,   [7]      ; [r12] always 1 to inc counters
-    movs   r5, #6            @1,   [8]      ; counter for remaining sync bits
-    ldr    r0, =0            @2,   [9:10]   [ dummy to fill timing]
-    nop                      @1,   [11]     [ dummy to fill timing]
-    ldr    r0, =0            @2,   [12:13]  [ dummy to fill timing]
+    nop                      @1,   [8]      [ dummy to fill timing]
+    bl   fDelay_5clk         @3+2, [9:13]   [ dummy to fill timing]
+    bl   fDelay_5clk         @3+2, [14:18]  [ dummy to fill timing]
+Rcv_sync_sec_bit:
+    ldrh   r7, [r6]          @2,   [0:1]    ; Read input (D- and D+)
+    ands   r7, r2            @1,   [2]      ; Apply input mask
+    cmp    r7, r4            @1,   [3]      ; Check if input changed
+    bne  Rcv_Bytes_SyncErro  @1/2, [4:4/5]
+Rcv_wait_third_bit:
+    ldrh   r7, [r6]          @2,   [0:1]    ; Read input (D- and D+)
+    ands   r7, r3            @1,   [2]      ; Check if input changed
+    beq   Rcv_wait_third_bit @1/2, [3:3/4]  ; Loop to waint for sync bit 3
+    movs   r5, #4            @1,   [4]      ; Counter for remaining sync bits
+    bl   fDelay_5clk         @3+2, [5:9]    [ dummy to fill timing]
+    bl   fDelay_5clk         @3+2, [10:14]  [ dummy to fill timing]
+    ldr    r0, =0            @2,   [15:16]  [ dummy to fill timing]
+    nop                      @1,   [23]     [ dummy to fill timing]
 RCV_sync_bits_loop:
     bl   fDelay_5clk         @3+2, [12:16]  [ dummy to fill timing]
     nop                      @1,   [17]     [ dummy to fill timing]
@@ -208,23 +221,21 @@ Rcv_Bytes_EOP:				 @
     subs   r1, #1            @1,   [7]     ; dec pointer
     bl   fDelay_5clk         @3+2, [8:12]   [ dummy to fill timing]
     bl   fDelay_5clk         @3+2, [13:17]  [ dummy to fill timing]
-
     ldrh   r7, [r6]          @2,   [0:1]    ; Read input (D- and D+)
     ands   r7, r3            @1,   [2]      ; Apply input pins mask
     bne  Rcv_Bytes_EOP_ERRO  @1/2, [3:3/4]  ; Branch if (D- and D+ == 0)
     bl   fDelay_5clk         @3+2, [4:8]
     bl   fDelay_5clk         @3+2, [9:13]
-    nop                      @1,   [14]     [ dummy to fill timing]
-
+    bl   fDelay_5clk         @3+2, [14:18]
     ldrh   r7, [r6]          @2,   [0:1]    ; Read input (D- and D+)
     ldr    r4, =USB_DATA_J   @2,   [2:3]    ; State after EOP
     ands   r7, r3            @1,   [4]      ; Apply input mask
     cmp    r7, r4            @1,   [5]      ; Check state
     bne  Rcv_Bytes_EOP_ERRO  @1/2, [6:6/7]
-
     pop	   {r4}			     @ param: (0) dont call ACK / (1) call ACK
     cmp    r4, #1
     bne  Rcv_Bytes_NoAck     @ branch if param No ACK
+
 Rcv_Bytes_DoAck:
     ldr    r7, =USB_DIFF_ACK_PACKET
     rev    r7, r7
@@ -234,6 +245,7 @@ Rcv_Bytes_DoAck:
     adds   r1, #3            @ Pointer to data
     bl	 Send_RawDiff
     pop    {r7}              @ back stact pointer
+
 Rcv_Bytes_NoAck:
     mov    r0, r8            @ length diff bits
     mov    r1, sp
