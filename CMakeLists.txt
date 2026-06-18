@@ -49,6 +49,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/Usb_signal_transfer_timing.s
     Core/Src/Usb_signal_receive.s
     Core/Src/usb_util.s
+    Core/Src/usb_crc.s
 )
 
 # Add include paths
