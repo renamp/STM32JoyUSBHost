@@ -20,71 +20,10 @@
 .thumb
 
 .global Send_RawDiff
-.type Send_RawDiff, %function
+.global USB_SendBytes
+.global USB_SendTokenPacket
 
-.global USB_PortPins_Init
-.type USB_PortPins_Init, %function
-
-.equ USB_GPIO_BASE,             0x50000000
-.equ USB_GPIO_D_MINUS_PIN,      0x00
-.equ USB_GPIO_D_PLUS_PIN,       0x01
-
-.equ USB_GPIO_MODER,      USB_GPIO_BASE + 0x00
-.equ USB_GPIO_OTYPER,     USB_GPIO_BASE + 0x04
-.equ USB_GPIO_OSPEEDR,    USB_GPIO_BASE + 0x08
-.equ USB_GPIO_PUPDR,      USB_GPIO_BASE + 0x0C
-.equ USB_GPIO_IDR,        USB_GPIO_BASE + 0x10
-.equ USB_GPIO_ODR,        USB_GPIO_BASE + 0x14
-.equ USB_GPIO_BSRR,       USB_GPIO_BASE + 0x18
-.equ USB_DMP,             USB_GPIO_D_MINUS_PIN
-.equ USB_DPP,             USB_GPIO_D_PLUS_PIN
-.equ USB_DM_MSM,          (0b11 << (2 * USB_DMP))
-.equ USB_DP_MSM,          (0b11 << (2 * USB_DPP))
-.equ USB_DM_OM,           (0b01 << (2 * USB_DMP))
-.equ USB_DP_OM,           (0b01 << (2 * USB_DPP))
-.equ USB_DM_SOH,          (1 << USB_DMP)             // (D-) Set Output HIGH
-.equ USB_DM_SOL,          (1 << (USB_DMP + 16))      // (D-) Set Output LOW
-.equ USB_DP_SOH,          (1 << USB_DPP)             // (D+) Set Output HIGH
-.equ USB_DP_SOL,          (1 << (USB_DPP + 16))      // (D+) Set Output LOW
-.equ USB_GPIO_MODE_SPEED_MASK,  ~(USB_DM_MSM | USB_DP_MSM)
-.equ USB_GPIO_OUTPUT,     (USB_DM_OM | USB_DP_OM)    // use Output mode
-.equ USB_GPIO_HIGHSPEED,  (USB_DM_MSM | USB_DP_MSM)  // use High Speed
-.equ USB_DIFFERENTIAL_1,  (USB_DM_SOL | USB_DP_SOH)  // (D+)=1, (D-)=0
-.equ USB_DIFFERENTIAL_0,  (USB_DM_SOH | USB_DP_SOL)  // (D+)=0, (D-)=1
-.equ USB_SE0,             (USB_DM_SOL | USB_DP_SOL)  // (D+)=0, (D-)=0
-
-
-/**
- * @brief  Initialize USB Port pins and change OUTPUT and INPUT
- *
- * @param void
- * @retval void
- *
- * @note
- *
- */
-USB_PortPins_Init:
-    ldr    r7, =USB_GPIO_OSPEEDR
-    ldr    r4, [r7]                     @ load current value of OSPEEDR
-    ldr    r3, =USB_GPIO_MODE_SPEED_MASK   @ mask bits
-    ands   r3, r4                       @ clear bits to update
-    ldr    r4, =USB_GPIO_HIGHSPEED
-    orrs   r3, r4                       @ set bits for high speed
-    str    r3, [r7]                     @ update value to OSPEEDR
-    bx lr
-
-USB_Output_mode:
-    ldr    r7, =USB_GPIO_BSRR
-    ldr    r5, =USB_DIFFERENTIAL_0
-    str    r5, [r7]                     @ set D+ low, D- high (idle state)
-    ldr    r7, =USB_GPIO_MODER
-    ldr    r4, [r7]                     @ load current value of MODER
-    ldr    r3, =USB_GPIO_MODE_SPEED_MASK   @ mask bits
-    ands   r3, r4                       @ clear bits
-    ldr    r4, =USB_GPIO_OUTPUT
-    orrs   r3, r4                       @ set bits for output
-    str    r3, [r7]                     @ update value of MODER
-    bx     lr
+.include "usb_def_config.inc"
 
 
 /**
@@ -97,14 +36,13 @@ USB_Output_mode:
  * @note
  *
  */
+.thumb_func
 Send_RawDiff:
     push {r4-r7, lr}        @ save registers
-@ set usb lines to output
+    bl   fUsb_setMode_Output
     ldr    r7, =USB_GPIO_BSRR
-    ldr    r5, =USB_DIFFERENTIAL_0
-    ldr    r6, =USB_DIFFERENTIAL_1
-    bl   USB_Output_mode
-    ldr    r7, =USB_GPIO_BSRR
+    ldr    r5, =USB_DIFF_0
+    ldr    r6, =USB_DIFF_1
     b    Send_RawDiff_L1    @ jump to send raw diff bits
 
 Sd_RD_fSIGNAL:
@@ -125,7 +63,7 @@ Sd_RD_fDelay:  @ (1+([r0]*3))
 Send_RawDiff_L1:
     ldrb    r2, [r1]        @2,     8/-- | load byte from data in
     subs    r1, #1          @1,    10/-- | dec data pointer
-    bl    Sd_RD_fSIGNAL      @2[3:4], -/--| send bit to USB lines
+    bl    Sd_RD_fSIGNAL     @2[3:4], -/--| send bit to USB lines
     lsrs    r2, #1          @1,      4/--| shift byte to get next bit in carry
     subs    r0, #1          @1,      5/--| dec bit length
     beq   Send_RawDiff_End  @1/2,    6/7| branch if more bits to send
@@ -163,11 +101,11 @@ Send_RawDiff_End:
     bl    Sd_RD_fDelay      @2(r0*3+1),  9/15| delay to ensure SE0 is detected
 
     ldr     r2, =USB_GPIO_BSRR      @2,   0/--
-    ldr     r1, =USB_DIFFERENTIAL_0 @2,   2/--
-    movs    r0, #2                  @2,   4/--| load delay
+    ldr     r1, =USB_DIFF_0 @2,   2/--
+    movs    r0, #2          @2,   4/--| load delay
     bl    Sd_RD_fDelay      @2(r0*3+1),  9/15| delay to ensure SE0 is detected
     str     r1, [r2]        @2,  set D+ low, D- high (idle state)
 
-    movs r0, #0x00
-    movs r1, #0x00
-    pop {pc}
+    ldr    r0, =0x00
+    ldr    r1, =0x00
+    pop   {pc}

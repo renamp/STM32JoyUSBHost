@@ -20,10 +20,7 @@
 .thumb
 
 .global USB_ReceiveBytes
-.type USB_ReceiveBytes, %function
-
-.global USB_ReceiveBytes_Ack
-.type USB_ReceiveBytes_Ack, %function
+.global USB_ReceiveBytesAck
 
 .include "usb_def_config.inc"
 
@@ -34,9 +31,10 @@
  * @retval  length of bytes received
  * @note
  *    prototype:
- *      extern uint8_t USB_ReceiveBytes_Ack(uint8_t *ptr_out);
+ *      extern uint8_t USB_ReceiveBytesAck(uint8_t *ptr_out);
  */
-USB_ReceiveBytes_Ack:
+.thumb_func
+USB_ReceiveBytesAck:
     ldr    r3, =1;	    @ send Ack packet after receive bytes
     b	 Receive_Bytes_INI1
 
@@ -49,6 +47,7 @@ USB_ReceiveBytes_Ack:
  *    prototype:
  *      extern uint8_t USB_ReceiveBytes(uint8_t *ptr_out);
  */
+.thumb_func
 USB_ReceiveBytes:
     ldr    r3, =0
 Receive_Bytes_INI1:
@@ -63,7 +62,7 @@ Receive_Bytes_INI1:
     mov    r1, sp                   @ [r1] stack index for diff array
     subs   r1, #OFFSET_FROM_STACK   @ leave some space on stack
     push   {r3}			    @ store param: (0) No_ACK / (1) ACK
-    bl   fUsb_set_input_mode
+    bl   fUsb_setMode_Input
     ldr    r2, =USB_DIMSK
     ldr    r3, =USB_DATA_K
     ldr    r4, =USB_DATA_J
