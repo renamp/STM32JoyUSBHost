@@ -109,3 +109,54 @@ Send_RawDiff_End:
     ldr    r0, =0x00
     ldr    r1, =0x00
     pop   {pc}
+
+
+/**
+ * @brief  Send bytes arrary to device
+ *
+ * @param  r0: Length of bytes array
+ * @param  r1: Pointer to bytes array
+ * @retval void
+ * @note
+ *      prototype:
+ *          extern void USB_SendBytes(uint8_t size, uint8_t *data);
+ */
+.thumb_func
+USB_SendBytes:
+    push    {r0-r1, lr}
+    bl    USB_crc16
+    CPSID  i			        @ disable interrupt
+    pop     {r2-r3}
+    strb    r0, [r3, r2]
+    adds    r2, #1
+    lsrs    r0, #8
+    strb    r0, [r3, r2]        @ Append CRC
+    adds    r2, #1
+    mov     r1, r3
+    mov     r0, r2
+	bl    Bytes2Rawdiff
+	bl    Send_RawDiff
+    CPSIE   i                @ enable interrups
+	pop   {pc}
+
+
+/**
+ * @brief  Send Token Packet
+ *
+ * @param  r0: PID type
+ * @param  r1: Pointer to Token array
+ * @retval void
+ * @note
+ *      prototype:
+ *          extern void USB_SendTokenPacket(uint8_t pid, USBToken *data);
+ */
+.thumb_func
+USB_SendTokenPacket:
+    push    {lr}
+    CPSID  i			        @ disable interrupt
+    strb    r0, [r1]
+    ldr     r0, =0x03
+	bl    Bytes2Rawdiff
+	bl    Send_RawDiff
+    CPSIE   i                @ enable interrups
+	pop   {pc}
