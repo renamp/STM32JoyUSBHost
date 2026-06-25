@@ -13,16 +13,19 @@
   ******************************************************************************
   */
 
+#if defined(__ARM_ARCH_7M__)
+  .cpu cortex-m3
+#elif defined(__ARM_ARCH_6M__)
+  .cpu cortex-m0plus
+#endif
+
 .syntax unified
-.cpu cortex-m0plus
 .fpu softvfp
 .thumb
 
 .global Bytes2Rawdiff
-.type Bytes2Rawdiff, %function
-
 .global Rawdiff2Bytes
-.type Rawdiff2Bytes, %function
+
 
 /**
  * @brief  Converts an array of data bytes to raw differential format for 
@@ -36,6 +39,7 @@
  * @note   
  *     
  */
+.thumb_func
 Bytes2Rawdiff:
     push    {r4-r7, lr}
     mov     r7, r8
@@ -127,6 +131,7 @@ Bytes2Rawdiff_L4:
  * @note
  *
  */
+.thumb_func
 Rawdiff2Bytes:
     push  {r4-r7, lr}
     mov   r4, r8
