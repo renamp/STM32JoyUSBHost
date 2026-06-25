@@ -70,6 +70,7 @@ Send_RawDiff:
     ldr    r7, =USB_GPIO_BSRR
     ldr    r5, =USB_DIFF_0
     ldr    r6, =USB_DIFF_1
+    CPSID   i               @ Disable interrupt
     b    Send_RawDiff_L1    @ jump to send raw diff bits
 
 .align 3
@@ -166,7 +167,6 @@ Send_RawDiff_End:
 USB_SendBytes:
     push    {r0-r1, lr}
     bl    USB_crc16
-    CPSID  i			    @ disable interrupt
     pop     {r2-r3}
     strb    r0, [r3, r2]
     adds    r2, #1
@@ -176,8 +176,7 @@ USB_SendBytes:
     mov     r1, r3
     mov     r0, r2
 	bl    Bytes2Rawdiff
-	bl    Send_RawDiff
-    CPSIE   i               @ enable interrups
+    CPSID   i                @ keep interrups Disabled
 	pop   {pc}
 
 
@@ -194,10 +193,15 @@ USB_SendBytes:
 .thumb_func
 USB_SendTokenPacket:
     push    {lr}
-    CPSID  i			    @ disable interrupt
     strb    r0, [r1]
-    ldr     r0, =0x03
-	bl    Bytes2Rawdiff
-	bl    Send_RawDiff
-    CPSIE   i               @ enable interrups
+    push    {r0}                @ store pid  /  @ store is interrupt are enabled or disabled
+	ldr     r0, =0x03
+    bl    Bytes2Rawdiff
+    pop     {r3}
+    cmp   r3, USB_TOKEN_PID_IN
+    beq   SendTokenPacket_end
+    CPSIE   i                   @ enable if not a PID IN
+    pop   {pc}
+SendTokenPacket_end:
+    CPSID   i                   @ Disable interrupt
 	pop   {pc}

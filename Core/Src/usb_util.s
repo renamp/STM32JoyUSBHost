@@ -67,7 +67,7 @@ fDelay_5clk:  @2
 .thumb_func
 fUsb_setMode_Input:
     push    {r5-r7}
-#if defined(STM32G0xx)
+#if defined(STM32G030xx)
     ldr     r7, =USB_GPIO_MODER
     ldr     r5, [r7]                         @ load current value of MODER
     ldr     r6, =USB_GPIO_MODE_SPEED_MASK    @ mask bits
@@ -101,7 +101,7 @@ fUsb_setMode_Output:
     ldr     r7, =USB_GPIO_BSRR
     ldr     r5, =USB_DIFF_0
     str     r5, [r7]                         @ set D+ low, D- high (idle state)
-#if defined(STM32G0xx)
+#if defined(STM32G030xx)
     ldr     r7, =USB_GPIO_MODER
     ldr     r5, [r7]                         @ load current value of MODER
     ldr     r6, =USB_GPIO_MODE_SPEED_MASK    @ mask bits

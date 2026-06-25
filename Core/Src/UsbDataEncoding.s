@@ -48,8 +48,12 @@ Bytes2Rawdiff:
     mov     r4, r11
     push    {r4-r7}
 
+    mov     r11, sp         @ initial stack position
     mov     r7, sp
-    subs    r7, #4          @ (x) rawdiff output pointer (top of stack)
+    subs    r7, #4          @ Alloc 4bytes in stack
+    mov     sp, r7
+    mov     r7, r11
+    subs    r7, #1          @ (x) rawdiff output pointer (top of stack)
     movs    r6, #0x66       @ load sync(Low nibble)
     strb    r6, [r7]
     movs    r6, #0xA6       @ load sync(High nibble)
@@ -88,10 +92,7 @@ Bytes2Rawdiff_L3:
     movs    r6, #0xFF
     ands    r4, r6          @ mask diff bits
 	bne	Bytes2Rawdiff_L4    @ jump if dont need store
-    mov     r7, r8          @ [r7] load rawdiff pointer
-	subs    r7, #1
-    strb    r3, [r7]        @ store diff byte
-    mov     r8, r7          @ [r8] update rawdiff pointer
+    bl    StoreByte
     movs    r3, #0x00       @ reset current diff byte
     movs    r4, #0x03       @ reset diff bits mask
 Bytes2Rawdiff_L4:
@@ -105,15 +106,28 @@ Bytes2Rawdiff_L4:
 	bne	Bytes2Rawdiff_L1
 	subs	r0, #1			@ bytes in array in
 	bne	Bytes2Rawdiff_L0
+    bl   StoreByte
     mov     r0, r9          @ len diff bits
-    mov     r1, sp         
-    subs    r1, #4          @ ptr array diff
+    mov     r1, r11         @ ptr stack before diff bits
+    subs    r1, #1          @ ptr array diff
+    bl    Send_RawDiff
+    mov     sp, r11         @ restore stack
     pop     {r4-r7}         @ restore r10,r9,r8 into r5,r6,r7
     mov     r11, r4
     mov     r10, r5
     mov     r9, r6
     mov     r8, r7
     pop     {r4-r7, pc}         @ restore r4-r7
+
+StoreByte:
+    mov     r7, r8          @ [r7] load rawdiff pointer
+	subs    r7, #1
+    strb    r3, [r7]        @ store diff byte
+    mov     r8, r7          @ [r8] update rawdiff pointer
+    lsrs    r7, #2
+    lsls    r7, #2          @ update current stack allocation
+    mov     sp, r7
+    bx lr
 
 
 .equ NUMBER_DIFF_BITS_IN_BYTE,    (0x04)
