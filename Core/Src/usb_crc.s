@@ -10,6 +10,15 @@
   ******************************************************************************
   */
 
+#if defined(__ARM_ARCH_7M__)
+  .cpu cortex-m3
+#elif defined(__ARM_ARCH_6M__)
+  .cpu cortex-m0plus
+#endif
+
+.syntax unified
+.fpu softvfp
+.thumb
 
 .global USB_crc16
 .global USB_AppendCRC5

@@ -14,8 +14,35 @@
   ******************************************************************************
   */
 
+#include "usb_conf.h"
+
+#ifndef __FCPU__
+  #error "USB Host: Please Define __FCPU__ in usb_conf.h with core Frequency"
+#else
+  #if __FCPU__ == 0
+    #error "USB Host: Please set __FCPU__ in usb_conf.h with core Frequency"
+  #else
+    #if defined(__ARM_ARCH_7M__)
+      #if (__FCPU__ == 64000000)
+        .cpu cortex-m3
+      #else
+        #error "USB Host: __FCPU__ Frequency not supported. "
+      #endif
+    #elif defined(__ARM_ARCH_6M__)
+      #if (__FCPU__ == 24000000)
+        .cpu cortex-m0plus
+      #else
+        #error "USB Host: __FCPU__ Frequency not supported. "
+      #endif
+    #endif
+  #endif
+#endif
+#if defined(USB_DEBUG_PIN)
+  #pragma message("USB Host: DEBUG_PIN enabled. This assist to analyse\
+                    signal timing.")
+#endif
+
 .syntax unified
-.cpu cortex-m0plus
 .fpu softvfp
 .thumb
 
@@ -45,6 +72,7 @@ Send_RawDiff:
     ldr    r6, =USB_DIFF_1
     b    Send_RawDiff_L1    @ jump to send raw diff bits
 
+.align 3
 Sd_RD_fSIGNAL:
     lsrs    r2, #1          @1,   3/--| shift byte to get next bit in carry
     bcs  Sd_RD_fSIGNAL1     @1/2, 4/5| branch if bit is 1
@@ -55,11 +83,7 @@ Sd_RD_fSIGNAL1:
     str     r5, [r7]        @2,   0/--| set D+ high, D- low (0)
     bx      lr              @2,   2/--| return from signal function
 
-Sd_RD_fDelay:  @ (1+([r0]*3))
-    subs   r0, #1           @1,   0/--| dec delay counter
-    bne   Sd_RD_fDelay      @1/2, 1/3| loop until delay is over
-    bx     lr               @2,   2/--| return from delay function
-
+.align 3
 Send_RawDiff_L1:
     ldrb    r2, [r1]        @2,     8/-- | load byte from data in
     subs    r1, #1          @1,    10/-- | dec data pointer
@@ -69,6 +93,10 @@ Send_RawDiff_L1:
     beq   Send_RawDiff_End  @1/2,    6/7| branch if more bits to send
     ldrb    r3, [r1]        @2,      7/--| dummy
     ldrb    r3, [r1]        @2,      9/--| dummy
+#if defined(__ARM_ARCH_7M__)
+    movs    r4, #2
+    bl    _fDelay_r4         @3+(r4*3)+1 / witth load =(5+(r4*3))
+#endif
 
     bl    Sd_RD_fSIGNAL     @2[3:4], -/--| send bit to USB lines
     lsrs    r2, #1          @1,      4/--| shift byte to get next bit in carry
@@ -76,6 +104,10 @@ Send_RawDiff_L1:
     beq   Send_RawDiff_End  @1/2,    6/7| branch if more bits to send -- [8/9]
     ldrb    r3, [r1]        @2,      7/--| dummy
     ldrb    r3, [r1]        @2,      9/--| dummy
+#if defined(__ARM_ARCH_7M__)
+    movs    r4, #2
+    bl    _fDelay_r4         @3+(r4*3)+1 / witth load =(5+(r4*3))
+#endif
 
     bl    Sd_RD_fSIGNAL     @2[3:4], -/--| send bit to USB lines
     lsrs    r2, #1          @1,      4/--| shift byte to get next bit in carry
@@ -83,9 +115,18 @@ Send_RawDiff_L1:
     beq   Send_RawDiff_End  @1/2,    6/7| branch if more bits to send -- [8/9]
     ldrb    r3, [r1]        @2,      7/--| dummy
     ldrb    r3, [r1]        @2,      9/--| dummy
+#if defined(__ARM_ARCH_7M__)
+    movs.w  r4, #2
+    bl    _fDelay_r4         @3+(r4*3)+1 / witth load =(5+(r4*3))
+#endif
 
     bl    Sd_RD_fSIGNAL     @2[3:4], -/--| send bit to USB lines
     lsrs    r2, #1          @1,      4/--| shift byte to get next bit in carry
+#if defined(__ARM_ARCH_7M__)
+    movs    r4, #1
+    bl    _fDelay_r4         @3+(r4*3)+1 / witth load =(5+(r4*3))
+    nop
+#endif
     subs    r0, #1          @1,      5/--| dec bit length
     bne   Send_RawDiff_L1   @1/2     6/7
     nop                     @1       7/--
@@ -98,12 +139,12 @@ Send_RawDiff_End:
     str     r4, [r7]        @2,      0/--| set SE0 to signal end of packet
     pop     {r4-r7}         @1+4,    2/--
     movs    r0, #1          @2,      7/--| load delay
-    bl    Sd_RD_fDelay      @2(r0*3+1),  9/15| delay to ensure SE0 is detected
+    bl    _fDelay      @2(r0*3+1),  9/15| delay to ensure SE0 is detected
 
     ldr     r2, =USB_GPIO_BSRR      @2,   0/--
     ldr     r1, =USB_DIFF_0 @2,   2/--
     movs    r0, #2          @2,   4/--| load delay
-    bl    Sd_RD_fDelay      @2(r0*3+1),  9/15| delay to ensure SE0 is detected
+    bl    _fDelay      @2(r0*3+1),  9/15| delay to ensure SE0 is detected
     str     r1, [r2]        @2,  set D+ low, D- high (idle state)
 
     ldr    r0, =0x00
@@ -125,18 +166,18 @@ Send_RawDiff_End:
 USB_SendBytes:
     push    {r0-r1, lr}
     bl    USB_crc16
-    CPSID  i			        @ disable interrupt
+    CPSID  i			    @ disable interrupt
     pop     {r2-r3}
     strb    r0, [r3, r2]
     adds    r2, #1
     lsrs    r0, #8
-    strb    r0, [r3, r2]        @ Append CRC
+    strb    r0, [r3, r2]    @ Append CRC
     adds    r2, #1
     mov     r1, r3
     mov     r0, r2
 	bl    Bytes2Rawdiff
 	bl    Send_RawDiff
-    CPSIE   i                @ enable interrups
+    CPSIE   i               @ enable interrups
 	pop   {pc}
 
 
@@ -153,10 +194,10 @@ USB_SendBytes:
 .thumb_func
 USB_SendTokenPacket:
     push    {lr}
-    CPSID  i			        @ disable interrupt
+    CPSID  i			    @ disable interrupt
     strb    r0, [r1]
     ldr     r0, =0x03
 	bl    Bytes2Rawdiff
 	bl    Send_RawDiff
-    CPSIE   i                @ enable interrups
+    CPSIE   i               @ enable interrups
 	pop   {pc}
