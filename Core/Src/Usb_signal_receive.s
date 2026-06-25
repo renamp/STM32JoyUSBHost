@@ -87,10 +87,10 @@ Receive_Bytes_INI1:
     push   {r4-r7}
     CPSID  i			        @ disable interrupt
     push   {r0}			        @ pointer outArray
-    mov    r1, sp                   @ [r1] stack index for diff array
-    subs   r1, #OFFSET_FROM_STACK   @ leave some space on stack
-    push   {r3}			    @ store param: (0) No_ACK / (1) ACK
+    push   {r3}			        @ store param: (0) No_ACK / (1) ACK0
     bl   fUsb_setMode_Input
+    mov    r1, sp               @ [r1] load current stack
+    subs   r1, #1               @ set Ptr for diff array on [r1]
     ldr    r2, =USB_DIMSK
     ldr    r3, =USB_DATA_K
     ldr    r4, =USB_DATA_J
@@ -257,7 +257,7 @@ Rcv_Bytes_EOP_ERRO:
 
 Rcv_Bytes_EOP:				 @
     strb   r0, [r1]          @2,   [5:6]
-    subs   r1, #1            @1,   [7]     ; dec pointer
+    nop                      @1,   [7]
     bl   fDelay_5clk         @3+2, [8:12]   [ dummy to fill timing]
     bl   fDelay_5clk         @3+2, [13:17]  [ dummy to fill timing]
     ldrh   r7, [r6]          @2,   [0:1]    ; Read input (D- and D+)
@@ -473,7 +473,7 @@ Rcv_Bytes_EOP_ERRO2:
 
 Rcv_Bytes_EOP:				 @
     strb   r0, [r1]          @2,   [5:6]
-    subs   r1, #1            @1,   [7]     ; dec pointer
+    nop                      @1,   [7]
     bl   fDelay_5clk         @3+2, [8:12]   [ dummy to fill timing]
     bl   fDelay_5clk         @3+2, [13:17]  [ dummy to fill timing]
   #if defined(USB_DEBUG_PIN)
@@ -502,8 +502,12 @@ Rcv_Bytes_EOP:				 @
     cmp    r7, r4            @1,   [5]      ; Check state
     bne  Rcv_Bytes_EOP_ERRO2  @1/2, [6:6/7]
 #endif
-    pop	   {r4}			     @ param: (0) dont call ACK / (1) call ACK
-    cmp    r4, #1
+    mov    r4, sp            @ stack position before raw diff bits
+    lsrs   r1, #2            @ shift to align.
+    lsls   r1, #2            @ aligned stack position after diff bits
+    mov    sp, r1            @ update stack position
+    ldr    r5, [r4]          @ param: (0) dont call ACK / (1) call ACK
+    cmp    r5, #1
     bne  Rcv_Bytes_NoAck     @ branch if param No ACK
 Rcv_Bytes_DoAck:
     ldr    r7, =USB_DIFF_ACK_PACKET
@@ -516,15 +520,17 @@ Rcv_Bytes_DoAck:
     pop    {r7}              @ back stact pointer
 
 Rcv_Bytes_NoAck:
+    CPSIE   i                @ enable interrups
     mov    r0, r8            @ length diff bits
-    mov    r1, sp
-    subs   r1, #OFFSET_FROM_STACK   @ pointer to diff bits (reverse stored)
-    pop	   {r2}			            @ pointer outArray Data decoded
+    mov    r1, r4            @ stack index before raw bits
+    subs   r1, #1            @ ptr to diff bits (reverse stored)
+    ldr    r2, [r4, #4]      @ ptr outArray Data (from stack bef. diff.bits)
     bl	 Rawdiff2Bytes
+    mov    sp, r4            @ restore stack (discard diff bits)
+    pop   {r4, r5}           @ discard the param and ptr outArray from stack
     b    Rcv_Bytes_END
 
 Rcv_Bytes_END:
-    CPSIE   i                @ enable interrups
     pop   {r4-r7}
     mov   r8, r4
     mov   r9, r5
