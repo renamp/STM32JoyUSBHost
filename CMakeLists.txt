@@ -50,6 +50,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/Usb_signal_receive.s
     Core/Src/usb_util.s
     Core/Src/usb_crc.s
+    Core/Src/device_wrapper.c
+    libs/UsbHost/Src/UsbHost.c
 )
 
 # Add include paths

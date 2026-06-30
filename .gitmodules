@@ -1,0 +1,3 @@
+[submodule "libs/UsbHost"]
+	path = libs/UsbHost
+	url = https://github.com/renamp/usb_host.git
