@@ -9,7 +9,7 @@
   ******************************************************************************
   */
 
-#include "../Inc/device_wrapper.h"
+#include "device_wrapper.h"
 
 
 inline void fUSB_Delay_1us(){

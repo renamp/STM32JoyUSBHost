@@ -36,6 +36,8 @@ add_executable(${CMAKE_PROJECT_NAME})
 
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
+add_subdirectory(libs/UsbHost)
+add_subdirectory(libs/usb_low_level)
 
 # Link directories setup
 target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
@@ -44,14 +46,7 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
-    # Add user sources here
-    Core/Src/UsbDataEncoding.s
-    Core/Src/Usb_signal_transfer_timing.s
-    Core/Src/Usb_signal_receive.s
-    Core/Src/usb_util.s
-    Core/Src/usb_crc.s
     Core/Src/device_wrapper.c
-    libs/UsbHost/Src/UsbHost.c
 )
 
 # Add include paths
@@ -70,6 +65,16 @@ list(REMOVE_ITEM CMAKE_C_IMPLICIT_LINK_LIBRARIES ob)
 # Add linked libraries
 target_link_libraries(${CMAKE_PROJECT_NAME}
     stm32cubemx
+    usb_host
+    usb_low_level
+)
 
-    # Add user defined libraries
+
+# Command to generate .lst file
+add_custom_command(
+ TARGET ${CMAKE_PROJECT_NAME}
+ POST_BUILD
+ COMMAND ${CMAKE_OBJDUMP}
+-d ${CMAKE_BINARY_DIR}/${CMAKE_PROJECT_NAME}.elf > ${CMAKE_BINARY_DIR}/${CMAKE_PROJECT_NAME}.lst
+ COMMENT "Generating .lst file"
 )

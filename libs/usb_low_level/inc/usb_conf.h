@@ -16,7 +16,7 @@
 /******************************************************************************/
 /************************ Lib Configuration ***********************************/
 /* Core frequency needed for USB receive and transfer timings ----------------*/
-#define __FCPU__                64000000
+#define __FCPU__                24000000
 
 /* USB gpio port base address of D- and D+ pins ------------------------------*/
 #define USB_GPIO_BASE           GPIOA_BASE
